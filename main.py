@@ -152,7 +152,7 @@ tests.test_optimize(optimize)
 
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
-             correct_label, keep_prob, learning_rate):
+             correct_label, keep_prob, learning_rate, saver):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -166,16 +166,14 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
-    # TODO: Implement function
-    sess.run(tf.global_variables_initializer())
-
     for epoch in range(epochs):
       batch_count = 0
       for images, labels in get_batches_fn(batch_size):
         batch_count += 1
-        sess.run(train_op, feed_dict={input_image: images, correct_label: labels, keep_prob: 0.5})
-        if batch_count % 10 == 0:
-          print("Batch %d".format(batch_count))
+        _, loss = sess.run([train_op, cross_entropy_loss], feed_dict={input_image: images, correct_label: labels, keep_prob: 0.5})
+        print("Batch {}, loss is {}".format(batch_count, loss))
+
+      saver.save(sess, "./model/model.ckpt")
 
 tests.test_train_nn(train_nn)
 
@@ -207,7 +205,7 @@ def run():
         image_input, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         output_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
-        epochs = 1
+        epochs = 16
         batch_size = 16
         learning_rate = 1e-2
 
@@ -215,8 +213,14 @@ def run():
 
         logits, train_op, cross_entropy_loss = optimize(output_layer, labels, learning_rate, num_classes)
 
+        sess.run(tf.global_variables_initializer())
+        
+        saver = tf.train.Saver()
+
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, image_input,
-          labels, keep_prob, learning_rate)
+          labels, keep_prob, learning_rate, saver)
+
+
 
 
         # TODO: Train NN using the train_nn function
