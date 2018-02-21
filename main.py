@@ -61,7 +61,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # but preserves spatial information
     encoder_1x1 = tf.layers.conv2d(
       vgg_layer7_out,               # the last tensor in the VGG model
-      1024,                  # the number of object types we are trying to predict, i.e. road, pedestrian
+      512,                          # number of channels
       1,                            # 1x1 kernel
       strides=(1, 1),               # 1x1 stride
       padding='same',               # don't want to change the shape
@@ -72,7 +72,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     
     decoder_conv1 = tf.layers.conv2d_transpose(
       encoder_1x1,
-      512,
+      512,            # to match vgg_layer4_out
       4,
       strides=(2, 2),
       padding='same',
@@ -85,7 +85,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     decoder_conv2 = tf.layers.conv2d_transpose(
       skip1,
-      512,
+      256,
       4,
       strides=(2, 2),
       padding='same',
@@ -96,7 +96,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     decoder_conv3 = tf.layers.conv2d_transpose(
       skip1,
-      256,
+      256,            # to match vgg_layer3_out
       4,
       strides=(2, 2),
       padding='same',
@@ -124,7 +124,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
       num_classes,                  # the number of object types we are trying to predict, i.e. road, pedestrian
       1,                            # 1x1 kernel
       padding='same',               # don't want to change the shape
-      activation=activation,
+      #activation=activation,       # no activation on this layer
       kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
       name='output'
     )
@@ -144,7 +144,7 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     """
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=correct_label))
     train_op = optimizer.minimize(cross_entropy_loss)
 
     return logits, train_op, cross_entropy_loss
@@ -152,7 +152,7 @@ tests.test_optimize(optimize)
 
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
-             correct_label, keep_prob, learning_rate, saver):
+             correct_label, keep_prob, learning_rate, accuracy, saver):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -170,12 +170,12 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
       batch_count = 0
       for images, labels in get_batches_fn(batch_size):
         batch_count += 1
-        _, loss = sess.run([train_op, cross_entropy_loss], feed_dict={input_image: images, correct_label: labels, keep_prob: 0.5})
-        print("Batch {}, loss is {}".format(batch_count, loss))
+        _, loss, acc = sess.run([train_op, cross_entropy_loss, accuracy], feed_dict={input_image: images, correct_label: labels, keep_prob: 0.5})
+        print("Batch {}, loss is {}, accuracy is {}".format(batch_count, loss, acc))
 
       saver.save(sess, "./model/model.ckpt")
 
-tests.test_train_nn(train_nn)
+#tests.test_train_nn(train_nn)
 
 
 def run():
@@ -207,18 +207,21 @@ def run():
 
         epochs = 16
         batch_size = 16
-        learning_rate = 1e-2
+        learning_rate = 1e-3
 
-        labels = tf.placeholder(tf.uint8, name='labels_placeholder')
+        labels = tf.placeholder(tf.float32, name='labels_placeholder')
 
         logits, train_op, cross_entropy_loss = optimize(output_layer, labels, learning_rate, num_classes)
+
+        correct_pred = tf.equal(tf.argmax(output_layer, 1), tf.argmax(labels, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='accuracy')
 
         sess.run(tf.global_variables_initializer())
         
         saver = tf.train.Saver()
 
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, image_input,
-          labels, keep_prob, learning_rate, saver)
+          labels, keep_prob, learning_rate, accuracy, saver)
 
 
 
