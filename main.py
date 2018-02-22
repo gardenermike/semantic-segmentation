@@ -61,7 +61,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # but preserves spatial information
     encoder_1x1 = tf.layers.conv2d(
       vgg_layer7_out,               # the last tensor in the VGG model
-      512,                          # number of channels
+      num_classes,                  # number of channels
       1,                            # 1x1 kernel
       strides=(1, 1),               # 1x1 stride
       padding='same',               # don't want to change the shape
@@ -72,7 +72,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     
     decoder_conv1 = tf.layers.conv2d_transpose(
       encoder_1x1,
-      512,            # to match vgg_layer4_out
+      num_classes,            # to match vgg_layer4_out
       4,
       strides=(2, 2),
       padding='same',
@@ -81,11 +81,22 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
       name='decoder_conv1'
     )
 
-    skip1 = tf.add(decoder_conv1, vgg_layer4_out)
+    decoder_1x1_1 = tf.layers.conv2d(
+      vgg_layer4_out,               # the last tensor in the VGG model
+      num_classes,                  # number of channels
+      1,                            # 1x1 kernel
+      strides=(1, 1),               # 1x1 stride
+      padding='same',               # don't want to change the shape
+      activation=activation,            # standard nonlinearity
+      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
+      name='decoder_1x1_1'
+    )
+
+    skip1 = tf.add(decoder_conv1, decoder_1x1_1)
 
     decoder_conv2 = tf.layers.conv2d_transpose(
       skip1,
-      256,
+      num_classes,
       4,
       strides=(2, 2),
       padding='same',
@@ -94,40 +105,51 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
       name='decoder_conv2'
     )
 
-    decoder_conv3 = tf.layers.conv2d_transpose(
-      skip1,
-      256,            # to match vgg_layer3_out
-      4,
-      strides=(2, 2),
+    decoder_1x1_2 = tf.layers.conv2d(
+      vgg_layer3_out,               # the last tensor in the VGG model
+      num_classes,                  # number of channels
+      1,                            # 1x1 kernel
+      strides=(1, 1),               # 1x1 stride
+      padding='same',               # don't want to change the shape
+      activation=activation,            # standard nonlinearity
+      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
+      name='decoder_1x1_2'
+    )
+
+    #decoder_conv3 = tf.layers.conv2d_transpose(
+    #  skip1,
+    #  256,            # to match vgg_layer3_out
+    #  4,
+    #  strides=(2, 2),
+    #  padding='same',
+    #  activation=activation,
+    #  kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
+    #  name='decoder_conv3'
+    #)
+
+    skip2 = tf.add(decoder_conv2, decoder_1x1_2)
+
+    output = tf.layers.conv2d_transpose(
+      skip2,
+      num_classes,
+      16,                   # bigger stride here to match vgg
+      strides=(8, 8),       # likewise, bigger kernel
       padding='same',
       activation=activation,
       kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
       name='decoder_conv3'
     )
 
-    skip2 = tf.add(decoder_conv3, vgg_layer3_out)
-
-    decoder_conv4 = tf.layers.conv2d_transpose(
-      skip2,
-      32,
-      16,                   # bigger stride here to match vgg
-      strides=(8, 8),       # likewise, bigger kernel
-      padding='same',
-      activation=activation,
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
-      name='decoder_conv4'
-    )
-
     # fully convolutional output instead of dense layer
-    output = tf.layers.conv2d(
-      decoder_conv4,               # the last tensor in the VGG model
-      num_classes,                  # the number of object types we are trying to predict, i.e. road, pedestrian
-      1,                            # 1x1 kernel
-      padding='same',               # don't want to change the shape
-      #activation=activation,       # no activation on this layer
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
-      name='output'
-    )
+    #output = tf.layers.conv2d(
+    #  decoder_conv3,               # the last tensor in the VGG model
+    #  num_classes,                  # the number of object types we are trying to predict, i.e. road, pedestrian
+    #  1,                            # 1x1 kernel
+    #  padding='same',               # don't want to change the shape
+    #  #activation=activation,       # no activation on this layer
+    #  kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
+    #  name='output'
+    #)
 
     return output
 tests.test_layers(layers)
@@ -170,7 +192,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
       batch_count = 0
       for images, labels in get_batches_fn(batch_size):
         batch_count += 1
-        _, loss, acc = sess.run([train_op, cross_entropy_loss, accuracy], feed_dict={input_image: images, correct_label: labels, keep_prob: 0.5})
+        _, loss, acc = sess.run([train_op, cross_entropy_loss, accuracy], feed_dict={input_image: images, correct_label: labels, keep_prob: 0.5, learning_rate: 1e-3})
         print("Batch {}, loss is {}, accuracy is {}".format(batch_count, loss, acc))
 
       saver.save(sess, "./model/model.ckpt")
@@ -201,15 +223,14 @@ def run():
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
-        # TODO: Build NN using load_vgg, layers, and optimize function
         image_input, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         output_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
         epochs = 16
         batch_size = 16
-        learning_rate = 1e-3
 
-        labels = tf.placeholder(tf.float32, name='labels_placeholder')
+        labels = tf.placeholder(tf.float32, shape=((None,) + image_shape + (num_classes,)), name='labels_placeholder')
+        learning_rate = tf.placeholder(tf.float32)
 
         logits, train_op, cross_entropy_loss = optimize(output_layer, labels, learning_rate, num_classes)
 
@@ -224,11 +245,6 @@ def run():
           labels, keep_prob, learning_rate, accuracy, saver)
 
 
-
-
-        # TODO: Train NN using the train_nn function
-
-        # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
 
         # OPTIONAL: Apply the trained model to a video
