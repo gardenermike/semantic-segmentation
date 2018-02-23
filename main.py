@@ -54,41 +54,42 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
     regularization_const = 1e-3
-    activation = tf.nn.relu
+    regularizer = tf.contrib.layers.l2_regularizer(regularization_const)
+    activation = None # tf.nn.relu
 
     # the encoder layer is already mostly written, but is ending with a convolution layer
     # we need a 1x1 convolution to act like the dense layer in original vgg
     # but preserves spatial information
     encoder_1x1 = tf.layers.conv2d(
       vgg_layer7_out,               # the last tensor in the VGG model
-      num_classes,                  # number of channels
+      1024, #num_classes,                  # number of channels
       1,                            # 1x1 kernel
       strides=(1, 1),               # 1x1 stride
       padding='same',               # don't want to change the shape
       activation=activation,            # standard nonlinearity
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
+      kernel_regularizer=regularizer, # penalize big weights to prevent gradient explosion
       name='encoder_1x1'
     )
     
     decoder_conv1 = tf.layers.conv2d_transpose(
       encoder_1x1,
-      num_classes,            # to match vgg_layer4_out
+      512, #num_classes,            # to match vgg_layer4_out
       4,
       strides=(2, 2),
       padding='same',
       activation=activation,
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
+      kernel_regularizer=regularizer,
       name='decoder_conv1'
     )
 
     decoder_1x1_1 = tf.layers.conv2d(
       vgg_layer4_out,               # the last tensor in the VGG model
-      num_classes,                  # number of channels
+      512, #num_classes,                  # number of channels
       1,                            # 1x1 kernel
       strides=(1, 1),               # 1x1 stride
       padding='same',               # don't want to change the shape
       activation=activation,            # standard nonlinearity
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
+      kernel_regularizer=regularizer,
       name='decoder_1x1_1'
     )
 
@@ -96,23 +97,23 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     decoder_conv2 = tf.layers.conv2d_transpose(
       skip1,
-      num_classes,
+      256, #num_classes,
       4,
       strides=(2, 2),
       padding='same',
       activation=activation,
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
+      kernel_regularizer=regularizer,
       name='decoder_conv2'
     )
 
     decoder_1x1_2 = tf.layers.conv2d(
       vgg_layer3_out,               # the last tensor in the VGG model
-      num_classes,                  # number of channels
+      256, #num_classes,                  # number of channels
       1,                            # 1x1 kernel
       strides=(1, 1),               # 1x1 stride
       padding='same',               # don't want to change the shape
       activation=activation,            # standard nonlinearity
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
+      kernel_regularizer=regularizer,
       name='decoder_1x1_2'
     )
 
@@ -135,8 +136,8 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
       16,                   # bigger stride here to match vgg
       strides=(8, 8),       # likewise, bigger kernel
       padding='same',
-      activation=activation,
-      kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
+      activation=None,
+      kernel_regularizer=regularizer,
       name='decoder_conv3'
     )
 
