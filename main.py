@@ -4,6 +4,8 @@ import helper
 import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
+import sys
+import scipy.misc
 
 
 # Check TensorFlow Version
@@ -185,7 +187,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
 #tests.test_train_nn(train_nn)
 
 
-def run():
+def run(load_existing=False):
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
@@ -205,13 +207,10 @@ def run():
         # Create function to get batches
         get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
 
-        # OPTIONAL: Augment Images for better results
-        #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
-
         image_input, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         output_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
-        epochs = 32
+        epochs = 64
         batch_size = 16
 
         labels = tf.placeholder(tf.float32, shape=((None,) + image_shape + (num_classes,)), name='labels_placeholder')
@@ -226,14 +225,26 @@ def run():
         
         saver = tf.train.Saver()
 
-        train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, image_input,
-          labels, keep_prob, learning_rate, accuracy, saver)
+        if load_existing:
+          saver.restore(sess, "./model/model.ckpt")
 
+          print("Model loaded. Generating images...")
+          image_outputs = helper.gen_test_output(
+            sess, logits, keep_prob, image_input, os.path.join(data_dir, 'video_frames'), image_shape)
+          print("Images generated!")
+          for name, image in image_outputs:
+            scipy.misc.imsave(os.path.join('./segmented_video', name), image)
 
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
+        else:
+          train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, image_input,
+            labels, keep_prob, learning_rate, accuracy, saver)
 
-        # OPTIONAL: Apply the trained model to a video
+          helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
+
 
 
 if __name__ == '__main__':
-    run()
+    load_existing = False
+    if len(sys.argv) > 1:
+      load_existing = True
+    run(load_existing)
