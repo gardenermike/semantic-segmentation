@@ -91,6 +91,11 @@ def gen_batch_function(data_folder, image_shape):
                 gt_bg = gt_bg.reshape(*gt_bg.shape, 1)
                 gt_image = np.concatenate((gt_bg, np.invert(gt_bg)), axis=2)
 
+                # randomly flip horizontally to augment data
+                if np.random.random() > 0.5:
+                  image = np.flip(image, 1)
+                  gt_image = np.flip(gt_image, 1)
+
                 images.append(image)
                 gt_images.append(gt_image)
 
