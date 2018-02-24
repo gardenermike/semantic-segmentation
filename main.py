@@ -53,27 +53,30 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
+
+    # prevent weights from getting too large and overfitting
     regularization_const = 1e-3
     regularizer = tf.contrib.layers.l2_regularizer(regularization_const)
+    #adding relu broke the model, probably because it does not match the VGG
     activation = None # tf.nn.relu
 
     # the encoder layer is already mostly written, but is ending with a convolution layer
     # we need a 1x1 convolution to act like the dense layer in original vgg
     # but preserves spatial information
     encoder_1x1 = tf.layers.conv2d(
-      vgg_layer7_out,               # the last tensor in the VGG model
-      1024, #num_classes,                  # number of channels
-      1,                            # 1x1 kernel
-      strides=(1, 1),               # 1x1 stride
-      padding='same',               # don't want to change the shape
-      activation=activation,            # standard nonlinearity
+      vgg_layer7_out,                 # the last tensor in the VGG model
+      1024,                           # number of channels
+      1,                              # 1x1 kernel
+      strides=(1, 1),                 # 1x1 stride
+      padding='same',                 # don't want to change the shape
+      activation=activation,          # nonlinearity
       kernel_regularizer=regularizer, # penalize big weights to prevent gradient explosion
       name='encoder_1x1'
     )
     
     decoder_conv1 = tf.layers.conv2d_transpose(
       encoder_1x1,
-      512, #num_classes,            # to match vgg_layer4_out
+      512,
       4,
       strides=(2, 2),
       padding='same',
@@ -83,12 +86,12 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     )
 
     decoder_1x1_1 = tf.layers.conv2d(
-      vgg_layer4_out,               # the last tensor in the VGG model
-      512, #num_classes,                  # number of channels
-      1,                            # 1x1 kernel
-      strides=(1, 1),               # 1x1 stride
-      padding='same',               # don't want to change the shape
-      activation=activation,            # standard nonlinearity
+      vgg_layer4_out,
+      512,
+      1,
+      strides=(1, 1),
+      padding='same',
+      activation=activation,
       kernel_regularizer=regularizer,
       name='decoder_1x1_1'
     )
@@ -97,7 +100,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     decoder_conv2 = tf.layers.conv2d_transpose(
       skip1,
-      256, #num_classes,
+      256,
       4,
       strides=(2, 2),
       padding='same',
@@ -107,26 +110,15 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     )
 
     decoder_1x1_2 = tf.layers.conv2d(
-      vgg_layer3_out,               # the last tensor in the VGG model
-      256, #num_classes,                  # number of channels
-      1,                            # 1x1 kernel
-      strides=(1, 1),               # 1x1 stride
-      padding='same',               # don't want to change the shape
-      activation=activation,            # standard nonlinearity
+      vgg_layer3_out,
+      256,
+      1,
+      strides=(1, 1),
+      padding='same',
+      activation=activation,
       kernel_regularizer=regularizer,
       name='decoder_1x1_2'
     )
-
-    #decoder_conv3 = tf.layers.conv2d_transpose(
-    #  skip1,
-    #  256,            # to match vgg_layer3_out
-    #  4,
-    #  strides=(2, 2),
-    #  padding='same',
-    #  activation=activation,
-    #  kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const),
-    #  name='decoder_conv3'
-    #)
 
     skip2 = tf.add(decoder_conv2, decoder_1x1_2)
 
@@ -140,17 +132,6 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
       kernel_regularizer=regularizer,
       name='decoder_conv3'
     )
-
-    # fully convolutional output instead of dense layer
-    #output = tf.layers.conv2d(
-    #  decoder_conv3,               # the last tensor in the VGG model
-    #  num_classes,                  # the number of object types we are trying to predict, i.e. road, pedestrian
-    #  1,                            # 1x1 kernel
-    #  padding='same',               # don't want to change the shape
-    #  #activation=activation,       # no activation on this layer
-    #  kernel_regularizer=tf.contrib.layers.l2_regularizer(regularization_const), # penalize big weights to prevent gradient explosion
-    #  name='output'
-    #)
 
     return output
 tests.test_layers(layers)
@@ -188,6 +169,8 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param correct_label: TF Placeholder for label images
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
+    :param accuracy: TF op to measure training accuracy
+    :param saver: TF saver to save model for later use
     """
     for epoch in range(epochs):
       batch_count = 0
@@ -198,6 +181,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
 
       saver.save(sess, "./model/model.ckpt")
 
+# the test worked, but I changed the method signature
 #tests.test_train_nn(train_nn)
 
 
@@ -227,7 +211,7 @@ def run():
         image_input, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         output_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
-        epochs = 16
+        epochs = 32
         batch_size = 16
 
         labels = tf.placeholder(tf.float32, shape=((None,) + image_shape + (num_classes,)), name='labels_placeholder')
@@ -235,7 +219,7 @@ def run():
 
         logits, train_op, cross_entropy_loss = optimize(output_layer, labels, learning_rate, num_classes)
 
-        correct_pred = tf.equal(tf.argmax(output_layer, 1), tf.argmax(labels, 1))
+        correct_pred = tf.equal(tf.argmax(output_layer, 3), tf.argmax(labels, 3))
         accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='accuracy')
 
         sess.run(tf.global_variables_initializer())
