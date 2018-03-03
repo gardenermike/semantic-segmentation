@@ -57,6 +57,30 @@ def maybe_download_pretrained_vgg(data_dir):
         # Remove zip file to save space
         os.remove(os.path.join(vgg_path, vgg_filename))
 
+def get_kitti_image_paths(data_dir):
+  data_folder = os.path.join(data_dir, 'data_road/training')
+  image_paths = glob(os.path.join(data_folder, 'image_2', '*.png'))
+  label_paths = {
+    re.sub(r'_(lane|road)_', '_', os.path.basename(path)): path
+    for path in glob(os.path.join(data_folder, 'gt_image_2', '*_road_*.png'))
+  }
+
+  return(image_paths, label_paths)
+
+def get_cityscapes_image_paths(data_dir):
+  data_folder = os.path.join(data_dir, 'cityscapes/leftImg8bit/train')
+  image_paths = glob(os.path.join(data_folder, '**', '*.png'), recursive=True)
+  labels_folder = os.path.join(data_dir, 'gtFine/train')
+  label_paths = {
+    re.sub(r'gtFine_color', 'leftImg8bit', os.path.basename(path)): path
+    for path in glob(os.path.join(labels_folder, '**', '*color.png'))
+  }
+
+  #print('label_paths size', len(label_paths))
+  #print('cityscapes', image_paths[0:10], [label_paths[os.path.basename(path)] for path in image_paths[0:10]])
+
+  return(image_paths, label_paths)
+
 
 def gen_batch_function(data_folder, image_shape):
     """
@@ -71,11 +95,14 @@ def gen_batch_function(data_folder, image_shape):
         :param batch_size: Batch Size
         :return: Batches of training data
         """
-        image_paths = glob(os.path.join(data_folder, 'image_2', '*.png'))
-        label_paths = {
-            re.sub(r'_(lane|road)_', '_', os.path.basename(path)): path
-            for path in glob(os.path.join(data_folder, 'gt_image_2', '*_road_*.png'))}
-        background_color = np.array([255, 0, 0])
+        kitti_background_color = np.array([255, 0, 0])
+        cityscapes_road_color = np.array([128, 64, 128, 255])
+        kitti_image_paths, kitti_label_paths = get_kitti_image_paths(data_folder)
+        cityscapes_image_paths, cityscapes_label_paths = get_cityscapes_image_paths(data_folder)
+
+        image_paths = kitti_image_paths + cityscapes_image_paths
+        label_paths = kitti_label_paths
+        label_paths.update(cityscapes_label_paths)
 
         random.shuffle(image_paths)
         for batch_i in range(0, len(image_paths), batch_size):
@@ -87,9 +114,19 @@ def gen_batch_function(data_folder, image_shape):
                 image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
                 gt_image = scipy.misc.imresize(scipy.misc.imread(gt_image_file), image_shape)
 
-                gt_bg = np.all(gt_image == background_color, axis=2)
-                gt_bg = gt_bg.reshape(*gt_bg.shape, 1)
-                gt_image = np.concatenate((gt_bg, np.invert(gt_bg)), axis=2)
+                # kitti processing
+                if image_file.find('data_road') >= 0:
+                  #print("kitti gt_image shape", gt_image.shape)
+                  gt_bg = np.all(gt_image == kitti_background_color, axis=2)
+                  gt_bg = gt_bg.reshape(*gt_bg.shape, 1)
+                  gt_image = np.concatenate((gt_bg, np.invert(gt_bg)), axis=2)
+
+                else:
+                  #print("gt_image shape", gt_image.shape)
+                  #print("gt_image sample", gt_image[0, 0, :])
+                  gt_road = np.all(gt_image == cityscapes_road_color, axis=2)
+                  gt_road = gt_road.reshape(*gt_road.shape, 1)
+                  gt_image = np.concatenate((np.invert(gt_road), gt_road), axis=2)
 
                 # randomly flip horizontally to augment data
                 if np.random.random() > 0.5:

@@ -205,7 +205,7 @@ def run(load_existing=False):
         # Path to vgg model
         vgg_path = os.path.join(data_dir, 'vgg')
         # Create function to get batches
-        get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
+        get_batches_fn = helper.gen_batch_function(data_dir, image_shape)
 
         image_input, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         output_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
@@ -234,6 +234,8 @@ def run(load_existing=False):
           print("Images generated!")
           for name, image in image_outputs:
             scipy.misc.imsave(os.path.join('./segmented_video', name), image)
+          
+          helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
 
         else:
           train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, image_input,
