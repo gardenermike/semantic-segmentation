@@ -151,7 +151,10 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=correct_label))
-    train_op = optimizer.minimize(cross_entropy_loss)
+    regularization_variables = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    regularization_constant = 1e-4
+    regularization_loss = tf.reduce_sum(regularization_variables) * regularization_constant
+    train_op = optimizer.minimize(cross_entropy_loss + regularization_loss)
 
     return logits, train_op, cross_entropy_loss
 tests.test_optimize(optimize)
@@ -210,7 +213,7 @@ def run(load_existing=False):
         image_input, keep_prob, vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = load_vgg(sess, vgg_path)
         output_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
-        epochs = 64
+        epochs = 32
         batch_size = 16
 
         labels = tf.placeholder(tf.float32, shape=((None,) + image_shape + (num_classes,)), name='labels_placeholder')
@@ -249,4 +252,5 @@ if __name__ == '__main__':
     load_existing = False
     if len(sys.argv) > 1:
       load_existing = True
+    #with tf.device('/cpu:0'): # to run inference on the model checkpoing while still training
     run(load_existing)
